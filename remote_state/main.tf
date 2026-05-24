@@ -2,21 +2,21 @@
 # CREATE AN S3 BUCKET AND DYNAMODB TABLE TO USE AS A TERRAFORM BACKEND
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# ----------------------------------------------------------------------------------------------------------------------
-# REQUIRE A SPECIFIC TERRAFORM VERSION OR HIGHER
-# This module has been updated with 0.12 syntax, which means it is no longer compatible with any versions below 0.12.
-# This module is forked from https://github.com/gruntwork-io/intro-to-terraform/tree/master/s3-backend
-# ----------------------------------------------------------------------------------------------------------------------
-
 terraform {
-  required_version = ">= 0.12"
+  # Modernized to ensure compatibility with modern Terraform features
+  required_version = ">= 1.0"
+  
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 4.0" # Required for the separate S3 resources
+    }
+  }
 }
 
-# ------------------------------------------------------------------------------
-# CONFIGURE OUR AWS CONNECTION
-# ------------------------------------------------------------------------------
-
-provider "aws" {}
+provider "aws" {
+  region = "ap-south-1"
+}
 
 # ------------------------------------------------------------------------------
 # CREATE THE S3 BUCKET
@@ -25,27 +25,45 @@ provider "aws" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  account_id    = data.aws_caller_identity.current.account_id
+  account_id = data.aws_caller_identity.current.account_id
 }
 
 resource "aws_s3_bucket" "terraform_state" {
-  # With account id, this S3 bucket names can be *globally* unique.
   bucket = "${local.account_id}-terraform-states"
 
-  # Enable versioning so we can see the full revision history of our
-  # state files
-  versioning {
-    enabled = true
+  # Prevents accidental deletion of the state bucket via terraform destroy
+  lifecycle {
+    prevent_destroy = true
   }
+}
 
-  # Enable server-side encryption by default
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "AES256"
-      }
+# Enable versioning (Updated syntax)
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Enable server-side encryption by default (Updated syntax)
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
     }
   }
+}
+
+# Explicitly block all public access to protect your secrets
+resource "aws_s3_bucket_public_access_block" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 # ------------------------------------------------------------------------------
@@ -55,7 +73,7 @@ resource "aws_s3_bucket" "terraform_state" {
 resource "aws_dynamodb_table" "terraform_lock" {
   name         = "terraform-lock"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
+  hash_key     = "LockID" # Must be exactly "LockID" for Terraform locking to work
 
   attribute {
     name = "LockID"
