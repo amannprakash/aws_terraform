@@ -3,9 +3,24 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 terraform {
-  # Modernized to ensure compatibility with modern Terraform features
   required_version = ">= 1.0"
   
+  # PASTE THIS IN NOW:
+  backend "s3" {
+    bucket         = "270474167040-terraform-states"
+    key            = "global/s3-backend/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "terraform-lock"
+    encrypt        = true
+  }
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 4.0"
+    }
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
